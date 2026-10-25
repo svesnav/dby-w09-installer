@@ -37,6 +37,13 @@ wlan_mac() {
 	[ -r /sys/class/net/wlan0/address ] && head -n 1 /sys/class/net/wlan0/address
 }
 
+pen_mac() {	# the M-Pencil paired in HarmonyOS; it does not advertise as discoverable
+	for ns in secure global system; do
+		v=$(settings get $ns huawei_bt_pencil_mac_address 2>/dev/null || true)
+		case "$v" in ??:??:??:??:??:??) echo "$v" | tr a-f A-F; return 0 ;; esac
+	done
+}
+
 bt_mac() {
 	v=$(settings get secure bluetooth_address 2>/dev/null || true)
 	case "$v" in ??:??:??:??:??:??) echo "$v"; return 0 ;; esac
@@ -169,6 +176,8 @@ populate() {
 	mkdir -p $ROOT/etc/matepad
 	[ "$wlan" != - ] && echo "$wlan" > $ROOT/etc/matepad/wlan-mac	# "-": unknown
 	[ "$bt" != - ] && echo "$bt" > $ROOT/etc/matepad/bt-mac
+	pen=$(pen_mac)	# Linux pairs the pen by it (matepad-pen-pair)
+	[ -n "$pen" ] && echo "$pen" > $ROOT/etc/matepad/pen-mac
 
 	say "step=stock-images"
 	H=$ROOT/usr/local/share/matepad/harmonyos-images

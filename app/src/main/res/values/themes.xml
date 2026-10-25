@@ -1,0 +1,8 @@
+<resources>
+    <style name="Theme.MatePadLinux" parent="android:Theme.Material.NoActionBar">
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:windowBackground">@color/background</item>
+    </style>
+    <color name="background">#FF101418</color>
+    <color name="icon_background">#FF0079C1</color>
+</resources>

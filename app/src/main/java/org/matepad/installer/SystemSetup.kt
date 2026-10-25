@@ -65,6 +65,8 @@ data class SystemSetup(
     val keyboard: KeyboardLayout = KEYBOARD_LAYOUTS.firstOrNull { it.xkb == defaultLanguage().keyboard }
         ?: KEYBOARD_LAYOUTS.first(),
     val timezone: String = TimeZone.getDefault().id.takeIf { it in TIME_ZONES } ?: "Europe/London",
+    /** SDDM logs the user in: the login screen has no on-screen keyboard yet. */
+    val autologin: Boolean = true,
 ) {
     val userNameError: String?
         get() = when {
@@ -93,6 +95,7 @@ data class SystemSetup(
         line("LOCALE", language.locale)
         line("KEYBOARD", keyboard.xkb)
         line("TIMEZONE", timezone)
+        line("AUTOLOGIN", if (autologin) "1" else "0")
         line("PASSWORD", password)
     }
 

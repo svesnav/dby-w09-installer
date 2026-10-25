@@ -185,7 +185,7 @@ populate() {
 
 configure() {	# configure PART, settings from stdin: KEY=value lines, PASSWORD last
 	p1=$1
-	FULLNAME= USERNAME= HOSTNAME= LOCALE= KEYBOARD= TIMEZONE= PASSWORD=
+	FULLNAME= USERNAME= HOSTNAME= LOCALE= KEYBOARD= TIMEZONE= AUTOLOGIN= PASSWORD=
 	while IFS= read -r line; do
 		case "$line" in
 		FULLNAME=*) FULLNAME=${line#FULLNAME=} ;;
@@ -194,6 +194,7 @@ configure() {	# configure PART, settings from stdin: KEY=value lines, PASSWORD l
 		LOCALE=*) LOCALE=${line#LOCALE=} ;;
 		KEYBOARD=*) KEYBOARD=${line#KEYBOARD=} ;;
 		TIMEZONE=*) TIMEZONE=${line#TIMEZONE=} ;;
+		AUTOLOGIN=*) AUTOLOGIN=${line#AUTOLOGIN=} ;;
 		PASSWORD=*) PASSWORD=${line#PASSWORD=} ;;
 		esac
 	done
@@ -243,6 +244,12 @@ configure() {	# configure PART, settings from stdin: KEY=value lines, PASSWORD l
 	printf '[Layout]\nLayoutList=%s\nVariantList=%s\nOptions=%s\nResetOldOptions=%s\nUse=true\n' \
 		"$KEYBOARD" "$variants" "$opts" "$([ -n "$opts" ] && echo true || echo false)" > $ROOT$home/.config/kxkbrc
 	C chown -R "$USERNAME:$USERNAME" "$home/.config"
+
+	if [ "$AUTOLOGIN" = 1 ]; then
+		say "automatic login for $USERNAME"
+		mkdir -p $ROOT/etc/sddm.conf.d
+		printf '[Autologin]\nUser=%s\nSession=plasmawayland\n' "$USERNAME" > $ROOT/etc/sddm.conf.d/90-matepad-autologin.conf
+	fi
 
 	say "Kubuntu's first-boot setup is not needed any more"
 	C systemctl disable oem-config.service oem-config.target >/dev/null 2>&1 || true

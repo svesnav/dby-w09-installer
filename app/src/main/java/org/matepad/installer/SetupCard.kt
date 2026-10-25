@@ -1,11 +1,14 @@
 package org.matepad.installer
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
@@ -18,6 +21,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
@@ -56,6 +60,15 @@ fun SetupCard(s: UiState, model: MainViewModel) {
             model.updateSetup { it.copy(keyboard = KEYBOARD_LAYOUTS[i]) }
         }
         TimeZoneChoice(st.timezone) { tz -> model.updateSetup { it.copy(timezone = tz) } }
+        Row(Modifier.clickable { model.updateSetup { it.copy(autologin = !it.autologin) } },
+            verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(checked = st.autologin, onCheckedChange = { v -> model.updateSetup { it.copy(autologin = v) } })
+            Column {
+                Text("Log in automatically")
+                Text("The login screen has no on-screen keyboard yet; the password still guards sudo.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
     }
 }
 

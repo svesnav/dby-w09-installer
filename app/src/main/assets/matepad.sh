@@ -157,6 +157,10 @@ populate() {
 	grep -v '^#' $DF/firmware.txt | grep . | while read -r f; do
 		for d in /vendor/firmware /vendor/firmware_mnt/image /firmware/image; do
 			[ -e "$d/$f" ] && { cp "$d/$f" $FW/; continue 2; }
+			# HarmonyOS keeps some signed images as .elf; an .mbn is the same file
+			case "$f" in *.mbn)
+				[ -e "$d/${f%.mbn}.elf" ] && { cp "$d/${f%.mbn}.elf" "$FW/$f"; continue 2; } ;;
+			esac
 		done
 		echo "missing firmware $f" >&2
 	done
@@ -254,6 +258,11 @@ configure() {	# configure PART, settings from stdin: KEY=value lines, PASSWORD l
 	say "Kubuntu's first-boot setup is not needed any more"
 	C systemctl disable oem-config.service oem-config.target >/dev/null 2>&1 || true
 	C systemctl set-default graphical.target >/dev/null 2>&1 || die "cannot set the default target"
+	# Images up to v2026.10.25-3 did not load the speaker link's codec stub at boot.
+	ML=$ROOT/etc/modules-load.d/matepad.conf
+	if [ -f "$ML" ] && ! grep -qx snd_soc_spdif_tx "$ML"; then
+		echo snd_soc_spdif_tx >> "$ML"
+	fi
 	sync
 	say "configured"
 }

@@ -73,6 +73,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     init {
         refreshTablet()
         loadReleases()
+        // The installation belongs to the process, not to this screen: show it
+        // again after the app is reopened, and refresh the tablet when it ends.
+        viewModelScope.launch {
+            var ended = false
+            InstallSession.state.collect { st ->
+                _state.update { it.copy(install = st) }
+                val nowEnded = st != null && (st.done || st.error != null)
+                if (nowEnded && !ended) refreshTablet()
+                ended = nowEnded
+            }
+        }
     }
 
     fun refreshTablet() {
@@ -149,32 +160,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
         }
-        _state.update { it.copy(install = InstallState()) }
-        viewModelScope.launch(Dispatchers.IO) {
-            val installer = Installer(app) { r ->
-                _state.update { st ->
-                    val cur = st.install ?: InstallState()
-                    st.copy(
-                        install = cur.copy(
-                            step = r.step,
-                            fraction = if (r.log == null) r.fraction else cur.fraction,
-                            detail = if (r.log == null) r.detail else cur.detail,
-                            log = if (r.log != null) (cur.log + r.log).takeLast(400) else cur.log,
-                        )
-                    )
-                }
-            }
-            try {
-                installer.install(source, Mac.normalize(s.wlanMac).orEmpty(), Mac.normalize(s.btMac).orEmpty())
-                _state.update { it.copy(install = it.install?.copy(done = true, fraction = 1f, detail = "Done")) }
-            } catch (e: Exception) {
-                _state.update { it.copy(install = it.install?.copy(error = e.message ?: e.toString())) }
-            }
-            refreshTablet()
-        }
+        InstallSession.start(app, source, Mac.normalize(s.wlanMac).orEmpty(), Mac.normalize(s.btMac).orEmpty())
     }
 
-    fun closeInstall() = _state.update { it.copy(install = null) }
+    fun closeInstall() = InstallSession.clear()
 
     fun bootLinux() {
         _state.update { it.copy(booting = true, bootError = null) }

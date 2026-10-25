@@ -6,6 +6,8 @@ partitions on the internal storage and its data stay as they are; only the
 three boot partitions are rewritten when Linux is started, and Kubuntu's
 **Restart to HarmonyOS** writes the stock ones back.
 
+![The installer writing Kubuntu to the microSD card](docs/installing.png)
+
 | Repository | Role |
 | --- | --- |
 | [linux-dby-w09](https://github.com/svesnav/linux-dby-w09) | kernel, device tree, boot bundle |

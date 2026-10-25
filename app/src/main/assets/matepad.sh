@@ -5,6 +5,7 @@
 #   sh matepad.sh wipe-card DEV             zero the partition tables at both ends
 #   sh matepad.sh reread DEV                reread the partition table, wait for DEV p1
 #   sh matepad.sh populate PART WLAN BT     copy this tablet's files into the new root
+#   sh matepad.sh configure PART            account, language, time zone (stdin)
 #   sh matepad.sh stage-check               verify /cache/linux70 (SHA256SUMS)
 # Partitions of the internal storage are only read here; the app writes the
 # boot partitions through /cache/linux70/boot-linux.sh.
@@ -182,8 +183,77 @@ populate() {
 	say "step=done"
 }
 
+configure() {	# configure PART, settings from stdin: KEY=value lines, PASSWORD last
+	p1=$1
+	FULLNAME= USERNAME= HOSTNAME= LOCALE= KEYBOARD= TIMEZONE= PASSWORD=
+	while IFS= read -r line; do
+		case "$line" in
+		FULLNAME=*) FULLNAME=${line#FULLNAME=} ;;
+		USERNAME=*) USERNAME=${line#USERNAME=} ;;
+		HOSTNAME=*) HOSTNAME=${line#HOSTNAME=} ;;
+		LOCALE=*) LOCALE=${line#LOCALE=} ;;
+		KEYBOARD=*) KEYBOARD=${line#KEYBOARD=} ;;
+		TIMEZONE=*) TIMEZONE=${line#TIMEZONE=} ;;
+		PASSWORD=*) PASSWORD=${line#PASSWORD=} ;;
+		esac
+	done
+	[ -n "$USERNAME" ] && [ -n "$PASSWORD" ] || die "no user name or password"
+	mkdir -p $ROOT
+	mount -t ext4 -o rw "$p1" $ROOT || die "cannot mount $p1"
+	mount -o bind /dev $ROOT/dev && mount -t proc proc $ROOT/proc && mount -t sysfs sysfs $ROOT/sys ||
+		die "cannot prepare the chroot"
+	trap 'cd /; for d in sys proc dev; do umount $ROOT/$d 2>/dev/null || umount -l $ROOT/$d; done;
+		umount $ROOT 2>/dev/null || umount -l $ROOT; rmdir $ROOT 2>/dev/null' EXIT
+	# Ubuntu's own tools inside the new root (HarmonyOS's kernel runs them)
+	C() { chroot $ROOT /usr/bin/env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin HOME=/root LANG=C.UTF-8 "$@"; }
+
+	say "user $USERNAME"
+	groups=
+	for g in adm cdrom sudo dip plugdev lpadmin sambashare users; do
+		C getent group $g >/dev/null && groups="$groups${groups:+,}$g"
+	done
+	C useradd -m -s /bin/bash -c "$FULLNAME" -G "$groups" "$USERNAME" || die "cannot create the user $USERNAME"
+	printf '%s:%s\n' "$USERNAME" "$PASSWORD" | C chpasswd || die "cannot set the password"
+	PASSWORD=
+
+	say "computer name $HOSTNAME"
+	echo "$HOSTNAME" > $ROOT/etc/hostname
+	C sed -i "s/^127\.0\.1\.1[[:space:]].*/127.0.1.1\t$HOSTNAME/" /etc/hosts
+
+	say "time zone $TIMEZONE"
+	[ -e "$ROOT/usr/share/zoneinfo/$TIMEZONE" ] || die "unknown time zone $TIMEZONE"
+	ln -sf "/usr/share/zoneinfo/$TIMEZONE" $ROOT/etc/localtime
+	echo "$TIMEZONE" > $ROOT/etc/timezone
+
+	say "language $LOCALE"
+	if ! C locale -a 2>/dev/null | grep -qix "${LOCALE%%.*}.utf8"; then
+		C locale-gen "$LOCALE" >/dev/null || die "cannot generate the locale $LOCALE"
+	fi
+	C update-locale LANG="$LOCALE"
+	home=/home/$USERNAME
+	mkdir -p $ROOT$home/.config
+	printf '[Formats]\nLANG=%s\n' "$LOCALE" > $ROOT$home/.config/plasma-localerc
+
+	say "keyboard $KEYBOARD"
+	variants=$(echo "$KEYBOARD" | sed 's/[^,]//g')	# one empty variant per layout
+	opts=
+	[ -n "$variants" ] && opts=grp:alt_shift_toggle
+	printf 'XKBMODEL="pc105"\nXKBLAYOUT="%s"\nXKBVARIANT="%s"\nXKBOPTIONS="%s"\nBACKSPACE="guess"\n' \
+		"$KEYBOARD" "$variants" "$opts" > $ROOT/etc/default/keyboard
+	printf '[Layout]\nLayoutList=%s\nVariantList=%s\nOptions=%s\nResetOldOptions=%s\nUse=true\n' \
+		"$KEYBOARD" "$variants" "$opts" "$([ -n "$opts" ] && echo true || echo false)" > $ROOT$home/.config/kxkbrc
+	C chown -R "$USERNAME:$USERNAME" "$home/.config"
+
+	say "Kubuntu's first-boot setup is not needed any more"
+	C systemctl disable oem-config.service oem-config.target >/dev/null 2>&1 || true
+	C systemctl set-default graphical.target >/dev/null 2>&1 || die "cannot set the default target"
+	sync
+	say "configured"
+}
+
 case "$1" in
 probe) probe ;;
+configure) configure "$2" ;;
 release-card) release_card "$2" ;;
 wipe-card) wipe_card "$2" ;;
 reread) reread "$2" ;;

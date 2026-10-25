@@ -43,11 +43,12 @@ data class UiState(
     val install: InstallState? = null,
     val bootError: String? = null,
     val booting: Boolean = false,
+    val setup: SystemSetup = SystemSetup(),
 ) {
     val selectedRelease get() = releases.firstOrNull { it.tag == selectedTag }
     val macsValid get() = (wlanMac.isBlank() || Mac.normalize(wlanMac) != null) && Mac.normalize(btMac) != null
     val canInstall
-        get() = probe?.isMatePad == true && probe.sd != null && install == null && macsValid &&
+        get() = probe?.isMatePad == true && probe.sd != null && install == null && macsValid && setup.valid &&
             when (source) {
                 SourceKind.RELEASE -> selectedRelease?.parts != null
                 SourceKind.FILE -> localImage != null
@@ -132,6 +133,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setSource(kind: SourceKind) = _state.update { it.copy(source = kind) }
     fun selectRelease(tag: String) = _state.update { it.copy(selectedTag = tag) }
+    /** The user name follows the full name until it is edited by hand. */
+    fun setFullName(v: String) = _state.update {
+        val s = it.setup
+        val follows = s.userName.isEmpty() || s.userName == SystemSetup.suggestUserName(s.fullName)
+        it.copy(setup = s.copy(fullName = v, userName = if (follows) SystemSetup.suggestUserName(v) else s.userName))
+    }
+    fun updateSetup(change: (SystemSetup) -> SystemSetup) = _state.update { it.copy(setup = change(it.setup)) }
     fun setWlanMac(v: String) = _state.update { it.copy(wlanMac = v) }
     fun setBtMac(v: String) = _state.update { it.copy(btMac = v) }
 
@@ -160,7 +168,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
         }
-        InstallSession.start(app, source, Mac.normalize(s.wlanMac).orEmpty(), Mac.normalize(s.btMac).orEmpty())
+        InstallSession.start(app, source, Mac.normalize(s.wlanMac).orEmpty(), Mac.normalize(s.btMac).orEmpty(), s.setup)
     }
 
     fun closeInstall() = InstallSession.clear()

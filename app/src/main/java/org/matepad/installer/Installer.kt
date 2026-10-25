@@ -29,6 +29,7 @@ enum class Step(val label: String) {
     CARD("Erase and partition the card"),
     WRITE("Write Kubuntu"),
     FILES("Copy this tablet's own files"),
+    SETUP("Set up your account and language"),
     BOOT("Prepare the boot images"),
 }
 
@@ -77,7 +78,7 @@ class Installer(private val context: Context, private val report: (Report) -> Un
 
     private fun log(step: Step, text: String) = report(Report(step, log = text))
 
-    fun install(source: ImageSource, wlanMac: String, btMac: String) {
+    fun install(source: ImageSource, wlanMac: String, btMac: String, setup: SystemSetup) {
         // 1. the tablet, the card and the stock boot partitions
         report(Report(Step.CHECK, detail = "Reading this tablet's state"))
         val probe = probe(context)
@@ -116,7 +117,12 @@ class Installer(private val context: Context, private val report: (Report) -> Un
             log(Step.FILES, line)
         }
 
-        // 5. boot images from the stock ones and the image's boot bundle
+        // 5. what Kubuntu's first-boot setup would ask (the password only over stdin)
+        report(Report(Step.SETUP, detail = "User ${setup.userName}, ${setup.language.label}, ${setup.timezone}"))
+        val configured = Root.pipe("sh $script configure $p1") { it.write(setup.toInput().toByteArray()) }
+        configured.out.lines().filter { it.isNotBlank() }.forEach { log(Step.SETUP, it) }
+
+        // 6. boot images from the stock ones and the image's boot bundle
         report(Report(Step.BOOT, detail = "Building boot, ramdisk and dtbo"))
         val b = "$stage/bundle"
         Root.check("cd $b && sha256sum -c SHA256SUMS")

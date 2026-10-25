@@ -18,8 +18,9 @@ three boot partitions are rewritten when Linux is started, and Kubuntu's
 
 - MatePad 11 (DBY-W09) on HarmonyOS, rooted (APatch, Magisk or KernelSU)
 - a microSD card of 32 GB or more (16 GB minimum); it is erased completely
-- for a GitHub download: a network connection; a token only while the image
-  repository is private (⚙ in the app)
+- for a GitHub download: a network connection
+- for the M-Pencil in Linux: the pen paired in HarmonyOS once (the app takes
+  its address from there)
 
 ## Using it
 
@@ -33,6 +34,10 @@ three boot partitions are rewritten when Linux is started, and Kubuntu's
 4. *Install Linux*: pick a GitHub release or a local `.img.xz` / `.img.gz`,
    then **Erase card and install**.
 5. **Boot Linux** restarts into Kubuntu, straight to its login screen.
+6. M-Pencil: in Kubuntu, take the pen off its magnet and put it back once.
+   Linux pairs it by itself in the background (it does not show up in
+   Bluetooth settings' device search); from then on it connects like in
+   HarmonyOS.
 
 ## What the installation does
 

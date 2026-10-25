@@ -151,8 +151,12 @@ fun App(model: MainViewModel) {
                         TabletCard(s, model)
                         BootCard(s, model)
                     }
-                    Column(Modifier.weight(0.58f).verticalScroll(rememberScrollState())) {
-                        if (install != null) ProgressCard(install, model) else InstallCard(s, model)
+                    Column(Modifier.weight(0.58f).verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(24.dp)) {
+                        if (install != null) ProgressCard(install, model) else {
+                            SetupCard(s, model)
+                            InstallCard(s, model)
+                        }
                     }
                 }
             } else {
@@ -161,6 +165,7 @@ fun App(model: MainViewModel) {
                     if (install != null) ProgressCard(install, model) else {
                         TabletCard(s, model)
                         BootCard(s, model)
+                        SetupCard(s, model)
                         InstallCard(s, model)
                     }
                 }
@@ -174,7 +179,7 @@ fun App(model: MainViewModel) {
 }
 
 @Composable
-private fun Section(title: String, icon: ImageVector? = null, modifier: Modifier = Modifier,
+internal fun Section(title: String, icon: ImageVector? = null, modifier: Modifier = Modifier,
                     content: @Composable ColumnScope.() -> Unit) {
     Card(modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
@@ -316,6 +321,10 @@ private fun InstallCard(s: UiState, model: MainViewModel) {
         if (s.probe != null && !s.macsValid) {
             Text("Enter the Bluetooth address above.", color = MaterialTheme.colorScheme.error,
                 style = MaterialTheme.typography.bodySmall)
+        }
+        if (!s.setup.valid) {
+            Text("Fill in your name, user name, password and time zone under Your Kubuntu.",
+                color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
         }
     }
     if (confirm) {

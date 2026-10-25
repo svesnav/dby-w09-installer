@@ -23,7 +23,7 @@ object InstallSession {
         get() = _state.value.let { it != null && !it.done && it.error == null }
 
     @Synchronized
-    fun start(app: Application, source: ImageSource, wlanMac: String, btMac: String): Boolean {
+    fun start(app: Application, source: ImageSource, wlanMac: String, btMac: String, setup: SystemSetup): Boolean {
         if (running) return false
         _state.value = InstallState()
         scope.launch {
@@ -39,7 +39,7 @@ object InstallSession {
                 }
             }
             try {
-                installer.install(source, wlanMac, btMac)
+                installer.install(source, wlanMac, btMac, setup)
                 _state.update { it?.copy(done = true, fraction = 1f, detail = "Done") }
             } catch (e: Exception) {
                 _state.update { it?.copy(error = e.message ?: e.toString()) }

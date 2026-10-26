@@ -258,6 +258,26 @@ configure() {	# configure PART, settings from stdin: KEY=value lines, PASSWORD l
 		"$KEYBOARD" "$variants" "$opts" "$([ -n "$opts" ] && echo true || echo false)" > $ROOT$home/.config/kxkbrc
 	C chown -R "$USERNAME:$USERNAME" "$home/.config"
 
+	# the on-screen keyboard (Maliit) gets the same languages as the layouts
+	langs= seen=" "
+	for l in $(echo "$KEYBOARD" | tr ',' ' '); do
+		case "$l" in
+		us|gb) m=en ;; ua) m=uk ;; by) m=be ;; se) m=sv ;; dk) m=da ;; gr) m=el ;;
+		il) m=he ;; rs) m=sr ;; cz) m=cs ;; ir) m=fa ;; no) m=nb ;; si) m=sl ;;
+		kr) m=ko ;; ch) m=fr-ch ;; *) m=$l ;;
+		esac
+		ls -d $ROOT/usr/lib/*/maliit/keyboard2/languages/"$m" >/dev/null 2>&1 || continue
+		case "$seen" in *" $m "*) continue ;; esac
+		seen="$seen$m "
+		langs="${langs:+$langs, }'$m'"
+	done
+	if [ -n "$langs" ]; then
+		say "on-screen keyboard languages $langs"
+		printf "[org.maliit.keyboard.maliit]\nenabled-languages=[%s]\n" "$langs" \
+			> $ROOT/usr/share/glib-2.0/schemas/90-matepad-maliit.gschema.override
+		C glib-compile-schemas /usr/share/glib-2.0/schemas || die "cannot compile the GSettings schemas"
+	fi
+
 	if [ "$AUTOLOGIN" = 1 ]; then
 		say "automatic login for $USERNAME"
 		mkdir -p $ROOT/etc/sddm.conf.d

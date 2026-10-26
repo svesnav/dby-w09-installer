@@ -47,7 +47,7 @@ three boot partitions are rewritten when Linux is started, and Kubuntu's
 | Erase and partition the card | clears both partition-table areas, writes an MBR with one Linux partition from 4 MiB to the end |
 | Write Kubuntu | streams the release (resuming dropped connections) through the xz/gzip decoder straight to the partition; checks the SHA-256 of the download |
 | Copy this tablet's own files | mounts the new root and copies the vendor files and firmware the image lists (`/usr/share/matepad/device-files`), the Wi-Fi/Bluetooth addresses, the paired M-Pencil's address (Linux pairs the pen by it), and the stock `boot`/`ramdisk`/`dtbo` images for Restart to HarmonyOS |
-| Set up your account and language | in the new root (chroot): creates the user with the password (passed over stdin only), computer name, time zone, locale and keyboard layouts, optional automatic login (SDDM), then switches Kubuntu's own first-boot setup off |
+| Set up your account and language | in the new root (chroot): creates the user with the password (passed over stdin only), computer name, time zone, locale and keyboard layouts (the on-screen keyboard gets the same languages), optional automatic login (SDDM), then switches Kubuntu's own first-boot setup off |
 | Prepare the boot images | from the image's boot bundle and the stock partitions: `boot` (stock header and ramdisk, Linux kernel, DTB with this tablet's Bluetooth address, command line), `ramdisk` (Linux initramfs over the stock partition, AVB footer kept), `dtbo`; staged in `/cache/linux70` with `SHA256SUMS` |
 
 **Boot Linux** runs `/cache/linux70/boot-linux.sh`: it checks the staged

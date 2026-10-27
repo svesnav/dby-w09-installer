@@ -17,7 +17,14 @@ enum class SourceKind { RELEASE, FILE }
 
 data class LocalImage(val uri: Uri, val name: String, val size: Long)
 
+/** What the session does: install Linux on the card, or update the installed one. */
+enum class Job(val steps: List<Step>) {
+    INSTALL(listOf(Step.CHECK, Step.CARD, Step.WRITE, Step.FILES, Step.SETUP, Step.BOOT)),
+    UPDATE(listOf(Step.CHECK, Step.UPDATE, Step.BOOT)),
+}
+
 data class InstallState(
+    val job: Job = Job.INSTALL,
     val step: Step = Step.CHECK,
     val fraction: Float? = null,
     val detail: String = "",
@@ -47,6 +54,7 @@ data class UiState(
 ) {
     val selectedRelease get() = releases.firstOrNull { it.tag == selectedTag }
     val macsValid get() = (wlanMac.isBlank() || Mac.normalize(wlanMac) != null) && Mac.normalize(btMac) != null
+    val canUpdate get() = probe?.linuxInstalled == true && install == null
     val canInstall
         get() = probe?.isMatePad == true && probe.sd != null && install == null && macsValid && setup.valid &&
             when (source) {
@@ -168,7 +176,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
         }
-        InstallSession.start(app, source, Mac.normalize(s.wlanMac).orEmpty(), Mac.normalize(s.btMac).orEmpty(), s.setup)
+        val wlan = Mac.normalize(s.wlanMac).orEmpty()
+        val bt = Mac.normalize(s.btMac).orEmpty()
+        InstallSession.start(app, Job.INSTALL) { it.install(source, wlan, bt, s.setup) }
+    }
+
+    /** Updates Kubuntu on the card (apt) and prepares its boot images again. */
+    fun update() {
+        val s = _state.value
+        if (!s.canUpdate) return
+        InstallSession.start(getApplication<Application>(), Job.UPDATE) { it.update() }
     }
 
     fun closeInstall() = InstallSession.clear()

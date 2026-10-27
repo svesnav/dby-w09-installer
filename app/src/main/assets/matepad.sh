@@ -341,6 +341,7 @@ update() {	# update PART ASSETS: Kubuntu on the card in place, then its boot bun
 		cp $assets/matepad-archive-keyring.asc $ROOT/usr/share/keyrings/matepad-archive-keyring.asc
 		C apt-mark unhold bluez libqt5waylandclient5 >/dev/null 2>&1 || true
 		if C dpkg-divert --list 2>/dev/null | grep -q qtwayland-original; then
+			rm -f $ROOT/usr/lib/aarch64-linux-gnu/libQt5WaylandClient.so.5.15.13	# the patched copy: --rename will not overwrite it
 			C dpkg-divert --package matepad --rename --remove /usr/lib/aarch64-linux-gnu/libQt5WaylandClient.so.5.15.13
 		fi
 		takeover=1
@@ -358,6 +359,13 @@ update() {	# update PART ASSETS: Kubuntu on the card in place, then its boot bun
 	if [ -n "$takeover" ]; then
 		say "step=Installing the MatePad packages"
 		apt_run "installing the MatePad packages" -o Dpkg::Options::=--force-confnew install matepad-dby-w09 linux-image-dby-w09
+		# dpkg keeps the hand-installed copies of the package's settings and
+		# leaves its versions as .dpkg-dist: those win, the old ones stay as .dpkg-old
+		C dpkg-query -W -f='${Conffiles}\n' matepad-dby-w09 | while read -r f _; do
+			if [ -f "$ROOT$f.dpkg-dist" ]; then
+				mv -f "$ROOT$f" "$ROOT$f.dpkg-old" && mv "$ROOT$f.dpkg-dist" "$ROOT$f"
+			fi
+		done
 	fi
 	say "step=Installing the updates"
 	apt_run "the upgrade" -o Dpkg::Options::=--force-confold full-upgrade

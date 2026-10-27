@@ -150,6 +150,7 @@ fun App(model: MainViewModel) {
                         verticalArrangement = Arrangement.spacedBy(24.dp)) {
                         TabletCard(s, model)
                         BootCard(s, model)
+                        UpdateCard(s, model)
                     }
                     Column(Modifier.weight(0.58f).verticalScroll(rememberScrollState()),
                         verticalArrangement = Arrangement.spacedBy(24.dp)) {
@@ -165,6 +166,7 @@ fun App(model: MainViewModel) {
                     if (install != null) ProgressCard(install, model) else {
                         TabletCard(s, model)
                         BootCard(s, model)
+                        UpdateCard(s, model)
                         SetupCard(s, model)
                         InstallCard(s, model)
                     }
@@ -288,6 +290,30 @@ private fun BootCard(s: UiState, model: MainViewModel) {
 }
 
 @Composable
+private fun UpdateCard(s: UiState, model: MainViewModel) {
+    if (s.probe?.linuxInstalled != true) return
+    var confirm by remember { mutableStateOf(false) }
+    Section("Update Kubuntu", Icons.Filled.Refresh) {
+        Text("Brings Kubuntu on the card up to date: the MatePad support and kernel from the MatePad " +
+            "repository, and Ubuntu's updates. Your files, settings and apps stay. Kubuntu can also " +
+            "update itself (Discover, or apt).",
+            style = MaterialTheme.typography.bodyMedium)
+        Button(
+            onClick = { confirm = true }, enabled = s.canUpdate,
+            modifier = Modifier.fillMaxWidth().height(56.dp), shape = RoundedCornerShape(16.dp),
+        ) { Text("Update", fontSize = 18.sp) }
+    }
+    if (confirm) AlertDialog(
+        onDismissRequest = { confirm = false },
+        title = { Text("Update Kubuntu?") },
+        text = { Text("The updates are downloaded over this tablet's network connection and installed on the " +
+            "card; this can take a few minutes. Keep the tablet charging and this app open.") },
+        confirmButton = { Button(onClick = { confirm = false; model.update() }) { Text("Update") } },
+        dismissButton = { TextButton(onClick = { confirm = false }) { Text("Cancel") } },
+    )
+}
+
+@Composable
 private fun InstallCard(s: UiState, model: MainViewModel) {
     val pick = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) model.pickFile(uri)
@@ -404,12 +430,13 @@ private fun ProgressCard(st: InstallState, model: MainViewModel) {
         view.keepScreenOn = !st.done && st.error == null
         onDispose { view.keepScreenOn = false }
     }
+    val update = st.job == Job.UPDATE
     Section(when {
-        st.error != null -> "Installation failed"
-        st.done -> "Linux is installed"
-        else -> "Installing…"
+        st.error != null -> if (update) "Update failed" else "Installation failed"
+        st.done -> if (update) "Kubuntu is up to date" else "Linux is installed"
+        else -> if (update) "Updating…" else "Installing…"
     }, modifier = Modifier.fillMaxSize()) {
-        Step.entries.forEach { step ->
+        st.job.steps.forEach { step ->
             val state = when {
                 st.done || step.ordinal < st.step.ordinal -> 2
                 step == st.step -> if (st.error != null) 3 else 1
@@ -445,7 +472,8 @@ private fun ProgressCard(st: InstallState, model: MainViewModel) {
         }
         st.error?.let {
             Text(it, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Medium)
-            Text("HarmonyOS's boot partitions were not changed. Fix the cause and install again.",
+            Text(if (update) "HarmonyOS's boot partitions were not changed. Fix the cause and update again."
+                else "HarmonyOS's boot partitions were not changed. Fix the cause and install again.",
                 style = MaterialTheme.typography.bodyMedium)
         }
         val listState = rememberLazyListState()

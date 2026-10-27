@@ -22,6 +22,8 @@ data class Probe(val values: Map<String, String>) {
     val sd get() = this["sd"].ifEmpty { null }
     val sdBytes get() = (this["sd_sectors"].toLongOrNull() ?: 0L) * 512
     val staged get() = this["staged"] == "1"
+    /** Kubuntu from this app is on the card (its root's label). */
+    val linuxInstalled get() = this["linux"] == "1"
 }
 
 enum class Step(val label: String) {
@@ -30,6 +32,7 @@ enum class Step(val label: String) {
     WRITE("Write Kubuntu"),
     FILES("Copy this tablet's own files"),
     SETUP("Set up your account and language"),
+    UPDATE("Update Kubuntu"),
     BOOT("Prepare the boot images"),
 }
 
@@ -54,10 +57,11 @@ class Installer(private val context: Context, private val report: (Report) -> Un
 
     companion object {
         fun installAssets(context: Context) {
-            for (name in listOf("matepad.sh", "boot-linux.sh")) {
-                context.assets.open(name).use { input ->
-                    File(context.filesDir, name).outputStream().use { input.copyTo(it) }
-                }
+            for (name in listOf("matepad.sh", "boot-linux.sh", "matepad.sources", "matepad.pref",
+                "matepad-archive-keyring.asc")) {
+                // the apt repository files: for updating an install from before the packages
+                val input = try { context.assets.open(name) } catch (e: IOException) { continue }
+                input.use { File(context.filesDir, name).outputStream().use { out -> it.copyTo(out) } }
             }
         }
 
@@ -85,17 +89,8 @@ class Installer(private val context: Context, private val report: (Report) -> Un
         if (!probe.isMatePad) throw IOException("this is not a MatePad 11 (DBY-W09): ${probe["model"]}")
         val sd = probe.sd ?: throw IOException("no microSD card")
         if (probe.sdBytes < 16L shl 30) throw IOException("the card is smaller than 16 GB")
-        val bootPart = probe["part_boot"].ifEmpty { throw IOException("no boot partition") }
-        val ramdiskPart = probe["part_ramdisk"].ifEmpty { throw IOException("no ramdisk partition") }
-        val bootHead = Root.read("head -c 4096 $bootPart")
-        val stockBoot = Root.read("head -c ${BootImage.imageSize(bootHead)} $bootPart")
-        val stock = BootImage.parse(stockBoot)
-        if (!stock.cmdline.contains("androidboot.hardware=")) {
-            throw IOException("the boot partition does not hold HarmonyOS's kernel")
-        }
-        val stockRamdisk = Root.read("cat $ramdiskPart")
+        val (stock, stockRamdisk) = readStock(probe)
         log(Step.CHECK, "${probe["model"]}, card ${probe["sd_name"]} ${probe.sdBytes / 1_000_000_000} GB at $sd")
-        log(Step.CHECK, "stock boot image: header v${stock.headerVersion}, ${stockBoot.size / 1024} KiB")
 
         // 2. the card: one Linux partition over all of it
         report(Report(Step.CARD, detail = "Erasing $sd"))
@@ -123,6 +118,52 @@ class Installer(private val context: Context, private val report: (Report) -> Un
         configured.out.lines().filter { it.isNotBlank() }.forEach { log(Step.SETUP, it) }
 
         // 6. boot images from the stock ones and the image's boot bundle
+        prepareBoot(stock, stockRamdisk, btMac)
+    }
+
+    /**
+     * Updates Kubuntu on the card in place: `apt full-upgrade` in its root
+     * (MatePad support and kernel from the MatePad repository, Ubuntu's
+     * updates), then its new boot images. Files, settings and apps stay.
+     */
+    fun update() {
+        report(Report(Step.CHECK, detail = "Reading this tablet's state"))
+        val probe = probe(context)
+        if (!probe.isMatePad) throw IOException("this is not a MatePad 11 (DBY-W09): ${probe["model"]}")
+        val sd = probe.sd ?: throw IOException("no microSD card")
+        if (!probe.linuxInstalled) throw IOException("there is no Kubuntu from this app on the card")
+        val (stock, stockRamdisk) = readStock(probe)
+        log(Step.CHECK, "${probe["model"]}, Kubuntu on ${probe["sd_name"]} at $sd")
+
+        report(Report(Step.UPDATE, detail = "Updating the package lists"))
+        var btMac = ""
+        val assets = context.filesDir.absolutePath
+        Root.check("sh $script update ${sd}p1 $assets") { line ->
+            when {
+                line.startsWith("step=") -> report(Report(Step.UPDATE, detail = line.substringAfter("step=")))
+                line.startsWith("bt_mac=") -> btMac = line.substringAfter("bt_mac=").trim()
+                else -> log(Step.UPDATE, line)
+            }
+        }
+        prepareBoot(stock, stockRamdisk, btMac)
+    }
+
+    /** HarmonyOS's boot image and ramdisk partition (the Linux ones are built on them). */
+    private fun readStock(probe: Probe): Pair<BootImage, ByteArray> {
+        val bootPart = probe["part_boot"].ifEmpty { throw IOException("no boot partition") }
+        val ramdiskPart = probe["part_ramdisk"].ifEmpty { throw IOException("no ramdisk partition") }
+        val bootHead = Root.read("head -c 4096 $bootPart")
+        val stockBoot = Root.read("head -c ${BootImage.imageSize(bootHead)} $bootPart")
+        val stock = BootImage.parse(stockBoot)
+        if (!stock.cmdline.contains("androidboot.hardware=")) {
+            throw IOException("the boot partition does not hold HarmonyOS's kernel")
+        }
+        log(Step.CHECK, "stock boot image: header v${stock.headerVersion}, ${stockBoot.size / 1024} KiB")
+        return stock to Root.read("cat $ramdiskPart")
+    }
+
+    /** boot, ramdisk and dtbo from the stock ones and the staged boot bundle, into /cache/linux70. */
+    private fun prepareBoot(stock: BootImage, stockRamdisk: ByteArray, btMac: String) {
         report(Report(Step.BOOT, detail = "Building boot, ramdisk and dtbo"))
         val b = "$stage/bundle"
         Root.check("cd $b && sha256sum -c SHA256SUMS")

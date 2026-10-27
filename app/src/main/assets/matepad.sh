@@ -7,6 +7,7 @@
 #   sh matepad.sh populate PART WLAN BT     copy this tablet's files into the new root
 #   sh matepad.sh configure PART            account, language, time zone (stdin)
 #   sh matepad.sh stage-check               verify /cache/linux70 (SHA256SUMS)
+#   sh matepad.sh update PART ASSETS        update Kubuntu on the card (apt), stage its boot bundle
 # Partitions of the internal storage are only read here; the app writes the
 # boot partitions through /cache/linux70/boot-linux.sh.
 set -e
@@ -77,7 +78,9 @@ probe() {
 		say "sd_sectors=$(cat $b/size)"
 		say "sd_name=$(cat $b/device/name 2>/dev/null)"
 		if [ -e "/dev/block/${n}p1" ]; then
-			say "sd_p1_label=$(blkid "/dev/block/${n}p1" 2>/dev/null | sed -n 's/.* LABEL="\([^"]*\)".*/\1/p')"
+			label=$(blkid "/dev/block/${n}p1" 2>/dev/null | sed -n 's/.* LABEL="\([^"]*\)".*/\1/p')
+			say "sd_p1_label=$label"
+			[ "$label" = LINUX70ROOT ] && say "linux=1"
 		fi
 		break
 	done
@@ -296,8 +299,89 @@ configure() {	# configure PART, settings from stdin: KEY=value lines, PASSWORD l
 	say "configured"
 }
 
+update() {	# update PART ASSETS: Kubuntu on the card in place, then its boot bundle to /cache
+	p1=$1 assets=$2
+	mkdir -p $ROOT
+	mount -t ext4 -o rw "$p1" $ROOT || die "cannot mount $p1"
+	if [ ! -f $ROOT/etc/os-release ] || [ ! -d $ROOT/usr/lib/matepad ]; then
+		umount $ROOT
+		die "no Kubuntu from this app on $p1"
+	fi
+	mount -o bind /dev $ROOT/dev && mount -o bind /dev/pts $ROOT/dev/pts && mount -t proc proc $ROOT/proc &&
+		mount -t sysfs sysfs $ROOT/sys || die "cannot prepare the chroot"
+	# apt needs a resolver: the root's resolv.conf points at systemd-resolved,
+	# which does not run here. Put the network's DNS servers in its place.
+	mv $ROOT/etc/resolv.conf $ROOT/etc/resolv.conf.matepad-update 2>/dev/null || true
+	dns=$(for p in net.dns1 net.dns2; do getprop $p; done)
+	{ for d in $dns 8.8.8.8 1.1.1.1; do echo "nameserver $d"; done; } > $ROOT/etc/resolv.conf
+	# services do not start in the chroot
+	policy=keep
+	if [ ! -e $ROOT/usr/sbin/policy-rc.d ]; then
+		policy=remove
+		printf '#!/bin/sh\nexit 101\n' > $ROOT/usr/sbin/policy-rc.d
+		chmod 755 $ROOT/usr/sbin/policy-rc.d
+	fi
+	trap 'cd /; [ "$policy" = keep ] || rm -f $ROOT/usr/sbin/policy-rc.d;
+		[ -e $ROOT/etc/resolv.conf.matepad-update ] && mv -f $ROOT/etc/resolv.conf.matepad-update $ROOT/etc/resolv.conf;
+		for d in sys proc dev/pts dev; do umount $ROOT/$d 2>/dev/null || umount -l $ROOT/$d; done;
+		umount $ROOT 2>/dev/null || umount -l $ROOT; rmdir $ROOT 2>/dev/null' EXIT
+	C() { chroot $ROOT /usr/bin/env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin HOME=/root LANG=C.UTF-8 \
+		DEBIAN_FRONTEND=noninteractive "$@"; }
+	# HarmonyOS lets only some users open network sockets: apt downloads as root
+	APT="apt-get -y -q -o APT::Sandbox::User=root -o Dpkg::Options::=--force-confdef"
+
+	# An install from before the MatePad packages: add their repository, and
+	# let the packages take over the hand-installed support.
+	takeover=
+	if [ ! -f $ROOT/etc/apt/sources.list.d/matepad.sources ]; then
+		say "step=Adding the MatePad repository"
+		[ -f $assets/matepad-archive-keyring.asc ] || die "this app has no MatePad repository key"
+		cp $assets/matepad.sources $ROOT/etc/apt/sources.list.d/matepad.sources
+		cp $assets/matepad.pref $ROOT/etc/apt/preferences.d/matepad
+		cp $assets/matepad-archive-keyring.asc $ROOT/usr/share/keyrings/matepad-archive-keyring.asc
+		C apt-mark unhold bluez libqt5waylandclient5 >/dev/null 2>&1 || true
+		if C dpkg-divert --list 2>/dev/null | grep -q qtwayland-original; then
+			C dpkg-divert --package matepad --rename --remove /usr/lib/aarch64-linux-gnu/libQt5WaylandClient.so.5.15.13
+		fi
+		takeover=1
+	fi
+	# apt's output streams to the app; its exit status goes through a file
+	rc=$ROOT/var/log/matepad-update.rc
+	apt_run() {	# apt_run WHAT ARGS...
+		what=$1; shift
+		{ C $APT "$@" 2>&1; echo $? > $rc; } | grep -v -e '^Get:' -e '^Hit:' -e '^Ign:' \
+			-e '^Selecting' -e '^(Reading' -e '^Preparing to unpack' || true
+		[ "$(cat $rc)" = 0 ] || die "$what failed"
+	}
+	say "step=Updating the package lists"
+	apt_run "apt-get update (network?)" update
+	if [ -n "$takeover" ]; then
+		say "step=Installing the MatePad packages"
+		apt_run "installing the MatePad packages" -o Dpkg::Options::=--force-confnew install matepad-dby-w09 linux-image-dby-w09
+	fi
+	say "step=Installing the updates"
+	apt_run "the upgrade" -o Dpkg::Options::=--force-confold full-upgrade
+	rm -f $rc
+	if C dpkg --audit | grep -q .; then
+		die "some packages are not set up (dpkg --audit)"
+	fi
+	say "version=$(cat $ROOT/usr/share/matepad/version 2>/dev/null)"
+	say "kernel=$(cat $ROOT/usr/lib/matepad/linux-boot/release.txt 2>/dev/null)"
+	[ -f $ROOT/etc/matepad/bt-mac ] && say "bt_mac=$(cat $ROOT/etc/matepad/bt-mac)"
+
+	say "step=Staging the boot bundle"
+	B=$ROOT/usr/lib/matepad/linux-boot
+	(cd $B && sha256sum -c SHA256SUMS >/dev/null) || die "the boot bundle on the card is damaged"
+	rm -rf $STAGE/bundle && mkdir -p $STAGE/bundle
+	cp $B/* $STAGE/bundle/
+	(cd $STAGE/bundle && sha256sum -c SHA256SUMS >/dev/null) || die "copying the boot bundle to /cache failed"
+	sync
+	say "step=done"
+}
+
 case "$1" in
 probe) probe ;;
+update) update "$2" "$3" ;;
 configure) configure "$2" ;;
 release-card) release_card "$2" ;;
 wipe-card) wipe_card "$2" ;;

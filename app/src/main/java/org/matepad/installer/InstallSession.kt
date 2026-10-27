@@ -10,9 +10,9 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 /**
- * The one installation of this app process. It outlives the screen (leaving
- * the app does not stop it, reopening shows it again), and a second one
- * cannot start while it runs: two would write the same card.
+ * The one installation or update of this app process. It outlives the screen
+ * (leaving the app does not stop it, reopening shows it again), and a second
+ * one cannot start while it runs: two would write the same card.
  */
 object InstallSession {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -23,9 +23,9 @@ object InstallSession {
         get() = _state.value.let { it != null && !it.done && it.error == null }
 
     @Synchronized
-    fun start(app: Application, source: ImageSource, wlanMac: String, btMac: String, setup: SystemSetup): Boolean {
+    fun start(app: Application, job: Job, work: (Installer) -> Unit): Boolean {
         if (running) return false
-        _state.value = InstallState()
+        _state.value = InstallState(job = job)
         scope.launch {
             val installer = Installer(app) { r ->
                 _state.update { cur ->
@@ -39,7 +39,7 @@ object InstallSession {
                 }
             }
             try {
-                installer.install(source, wlanMac, btMac, setup)
+                work(installer)
                 _state.update { it?.copy(done = true, fraction = 1f, detail = "Done") }
             } catch (e: Exception) {
                 _state.update { it?.copy(error = e.message ?: e.toString()) }

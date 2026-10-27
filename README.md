@@ -54,6 +54,16 @@ three boot partitions are rewritten when Linux is started, and Kubuntu's
 images, writes them, reads them back and restarts. The same script works from
 a root shell: `su -c sh /cache/linux70/boot-linux.sh`.
 
+## Updating
+
+**Update** (shown when the card already has Kubuntu from this app) updates it
+in place, keeping your files, settings and apps: in a chroot it runs
+`apt-get update` and `full-upgrade` against Ubuntu and the MatePad apt
+repository ([kubuntu-dby-w09](https://github.com/svesnav/kubuntu-dby-w09)
+`packaging/`), then rebuilds the boot images from the updated kernel; **Boot
+Linux** starts it. A card from before the MatePad packages first gets the
+repository and moves its hand-installed support over to the packages.
+
 The Linux filesystem grows to the whole card on its first boot. No Huawei
 file is downloaded: everything Huawei comes from the tablet it is installed on.
 
@@ -73,6 +83,6 @@ gradle testDebugUnitTest assembleRelease
 | --- | --- |
 | `app/src/main/java/org/matepad/installer/core/` | boot image (mkbootimg v0–v2), DTB, MBR and ramdisk helpers; plain Java with unit tests |
 | `app/src/main/java/org/matepad/installer/` | Compose UI, view model, installation steps, GitHub download, `su` helper |
-| `app/src/main/assets/matepad.sh` | the root-side steps (probe, card, populate) |
+| `app/src/main/assets/matepad.sh` | the root-side steps (probe, card, populate, update) |
 | `app/src/main/assets/boot-linux.sh` | the same script as kubuntu-dby-w09 `boot-switch/boot-linux.sh` |
 | `signing/` | the shared signing key |

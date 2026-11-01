@@ -66,6 +66,14 @@ repository ([kubuntu-dby-w09](https://github.com/svesnav/kubuntu-dby-w09)
 Linux** starts it. A card from before the MatePad packages first gets the
 repository and moves its hand-installed support over to the packages.
 
+## Updating the app
+
+At start (and on refresh) the app looks up its newest release here on GitHub.
+When it is newer than the installed version, **App update** offers it: the APK
+streams from GitHub straight into `pm install` as root (nothing is stored on
+the tablet) and installs over the app, which then closes; open it again.
+Development builds (`0.1-dev.N`) are not offered releases.
+
 ## Swap
 
 **Swap** (shown when the card already has Kubuntu from this app) shows the

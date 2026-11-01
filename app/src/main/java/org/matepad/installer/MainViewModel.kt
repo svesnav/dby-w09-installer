@@ -34,7 +34,19 @@ data class InstallState(
     val done: Boolean = false,
 )
 
+/** This app's own update from GitHub. */
+data class AppUpdateState(
+    val installed: String = "",
+    val latest: AppRelease? = null,
+    /** latest is newer than installed; null: a development build or not checked. */
+    val newer: Boolean? = null,
+    val checking: Boolean = false,
+    val installing: Float? = null,
+    val error: String? = null,
+)
+
 data class UiState(
+    val appUpdate: AppUpdateState = AppUpdateState(),
     val probing: Boolean = true,
     val probe: Probe? = null,
     val probeError: String? = null,
@@ -83,6 +95,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     init {
         refreshTablet()
         loadReleases()
+        checkAppUpdate()
         // The installation belongs to the process, not to this screen: show it
         // again after the app is reopened, and refresh the tablet when it ends.
         viewModelScope.launch {
@@ -130,6 +143,37 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 }
             } catch (e: Exception) {
                 _state.update { it.copy(releasesLoading = false, releasesError = e.message ?: e.toString()) }
+            }
+        }
+    }
+
+    fun checkAppUpdate() {
+        val installed = AppUpdate.installedVersion(getApplication())
+        _state.update { it.copy(appUpdate = AppUpdateState(installed = installed, checking = true)) }
+        viewModelScope.launch(Dispatchers.IO) {
+            val st = try {
+                val latest = AppUpdate.latest()
+                AppUpdateState(installed, latest, latest?.let { AppUpdate.isNewer(it.version, installed) })
+            } catch (e: Exception) {
+                AppUpdateState(installed, error = e.message ?: e.toString())
+            }
+            _state.update { it.copy(appUpdate = st) }
+        }
+    }
+
+    /** Installs the newest release over this app; Android then stops it (reopen it). */
+    fun updateApp() {
+        val u = _state.value.appUpdate
+        val latest = u.latest ?: return
+        if (u.installing != null || InstallSession.running) return
+        _state.update { it.copy(appUpdate = u.copy(installing = 0f, error = null)) }
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                AppUpdate.install(latest) { f ->
+                    _state.update { it.copy(appUpdate = it.appUpdate.copy(installing = f)) }
+                }
+            } catch (e: Exception) {
+                _state.update { it.copy(appUpdate = it.appUpdate.copy(installing = null, error = e.message ?: e.toString())) }
             }
         }
     }

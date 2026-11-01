@@ -31,6 +31,9 @@ data class Release(
     val parts: List<Asset>? get() = manifest?.parts?.map { assets[it] ?: return null }
 }
 
+/** A release of this app: its version (the tag without "v") and APK. */
+data class AppRelease(val version: String, val published: String, val asset: Asset)
+
 /** GitHub releases of the image repository; a token only for private repositories. */
 class GitHub(private val repo: String, private val token: String) {
     private fun connect(url: String, accept: String): HttpURLConnection {
@@ -94,6 +97,19 @@ class GitHub(private val repo: String, private val token: String) {
                 manifest = manifest,
             )
         }.filter { it.manifest != null }
+    }
+
+    /** The newest release (not a pre-release) that has an APK: the installer's own repository. */
+    fun latestApp(): AppRelease? {
+        val r = JSONObject(getText("https://api.github.com/repos/$repo/releases/latest"))
+        val assets = r.getJSONArray("assets")
+        val apk = (0 until assets.length()).map { assets.getJSONObject(it) }
+            .firstOrNull { it.getString("name").endsWith(".apk") } ?: return null
+        return AppRelease(
+            version = r.getString("tag_name").removePrefix("v"),
+            published = r.optString("published_at").take(10),
+            asset = Asset(apk.getString("name"), apk.getLong("size"), apk.getString("url")),
+        )
     }
 
     private fun parseManifest(m: JSONObject) = ImageManifest(

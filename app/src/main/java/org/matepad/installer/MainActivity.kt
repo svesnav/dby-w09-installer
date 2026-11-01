@@ -131,7 +131,8 @@ fun App(model: MainViewModel) {
                     }
                 },
                 actions = {
-                    IconButton(onClick = { model.refreshTablet(); model.loadReleases() }, enabled = s.install == null) {
+                    IconButton(onClick = { model.refreshTablet(); model.loadReleases(); model.checkAppUpdate() },
+                        enabled = s.install == null) {
                         Icon(Icons.Filled.Refresh, "Refresh")
                     }
                     IconButton(onClick = { settings = true }, enabled = s.install == null) {
@@ -149,6 +150,7 @@ fun App(model: MainViewModel) {
                 Row(Modifier.fillMaxSize().padding(24.dp), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
                     Column(Modifier.weight(0.42f).verticalScroll(rememberScrollState()),
                         verticalArrangement = Arrangement.spacedBy(24.dp)) {
+                        AppUpdateCard(s, model)
                         TabletCard(s, model)
                         BootCard(s, model)
                         UpdateCard(s, model)
@@ -166,6 +168,7 @@ fun App(model: MainViewModel) {
                 Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     if (install != null) ProgressCard(install, model) else {
+                        AppUpdateCard(s, model)
                         TabletCard(s, model)
                         BootCard(s, model)
                         UpdateCard(s, model)
@@ -314,6 +317,30 @@ private fun UpdateCard(s: UiState, model: MainViewModel) {
         confirmButton = { Button(onClick = { confirm = false; model.update() }) { Text("Update") } },
         dismissButton = { TextButton(onClick = { confirm = false }) { Text("Cancel") } },
     )
+}
+
+/** A newer release of this app on GitHub: install it over this one. */
+@Composable
+private fun AppUpdateCard(s: UiState, model: MainViewModel) {
+    val u = s.appUpdate
+    val latest = u.latest ?: return
+    if (u.newer != true && u.installing == null) return
+    Section("App update", Icons.Filled.Refresh) {
+        Text("MatePad Linux ${latest.version} (${latest.published}) is out; this is ${u.installed}. " +
+            "Updating downloads it from GitHub and installs it over this app, which then closes: open it again.",
+            style = MaterialTheme.typography.bodyMedium)
+        val f = u.installing
+        if (f != null) {
+            LinearProgressIndicator(progress = { f }, modifier = Modifier.fillMaxWidth().height(8.dp))
+            Text(if (f < 1f) "Downloading %.0f %%".format(f * 100) else "Installing…",
+                style = MaterialTheme.typography.bodySmall)
+        }
+        Button(
+            onClick = model::updateApp, enabled = f == null && s.install == null,
+            modifier = Modifier.fillMaxWidth().height(56.dp), shape = RoundedCornerShape(16.dp),
+        ) { Text("Update app to ${latest.version}", fontSize = 18.sp) }
+        u.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+    }
 }
 
 @Composable

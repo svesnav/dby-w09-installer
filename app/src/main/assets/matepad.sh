@@ -148,6 +148,21 @@ copy_list() {	# copy_list LIST: files and dir/ entries, same paths under $ROOT
 	done
 }
 
+copy_firmware() {	# copy_firmware LIST: the tablet's firmware the image lists, into $ROOT
+	FW=$ROOT/usr/lib/firmware/qcom/sm8250/huawei/dby-w09
+	mkdir -p $FW
+	grep -v '^#' "$1" | grep . | while read -r f; do
+		for d in /vendor/firmware /vendor/firmware_mnt/image /firmware/image; do
+			[ -e "$d/$f" ] && { cp "$d/$f" $FW/; continue 2; }
+			# HarmonyOS keeps some signed images as .elf; an .mbn is the same file
+			case "$f" in *.mbn)
+				[ -e "$d/${f%.mbn}.elf" ] && { cp "$d/${f%.mbn}.elf" "$FW/$f"; continue 2; } ;;
+			esac
+		done
+		echo "missing firmware $f" >&2
+	done
+}
+
 populate() {
 	p1=$1 wlan=$2 bt=$3
 	mkdir -p $ROOT
@@ -162,18 +177,7 @@ populate() {
 	say "step=device-files"
 	copy_list $DF/manifest.txt
 	say "step=firmware"
-	FW=$ROOT/usr/lib/firmware/qcom/sm8250/huawei/dby-w09
-	mkdir -p $FW
-	grep -v '^#' $DF/firmware.txt | grep . | while read -r f; do
-		for d in /vendor/firmware /vendor/firmware_mnt/image /firmware/image; do
-			[ -e "$d/$f" ] && { cp "$d/$f" $FW/; continue 2; }
-			# HarmonyOS keeps some signed images as .elf; an .mbn is the same file
-			case "$f" in *.mbn)
-				[ -e "$d/${f%.mbn}.elf" ] && { cp "$d/${f%.mbn}.elf" "$FW/$f"; continue 2; } ;;
-			esac
-		done
-		echo "missing firmware $f" >&2
-	done
+	copy_firmware $DF/firmware.txt
 
 	say "step=identity"
 	mkdir -p $ROOT/etc/matepad
@@ -373,6 +377,9 @@ update() {	# update PART ASSETS: Kubuntu on the card in place, then its boot bun
 	if C dpkg --audit | grep -q .; then
 		die "some packages are not set up (dpkg --audit)"
 	fi
+	# firmware the updated image lists that the install predates (video: venus.*)
+	[ -f $ROOT/usr/share/matepad/device-files/firmware.txt ] &&
+		copy_firmware $ROOT/usr/share/matepad/device-files/firmware.txt
 	say "version=$(cat $ROOT/usr/share/matepad/version 2>/dev/null)"
 	say "kernel=$(cat $ROOT/usr/lib/matepad/linux-boot/release.txt 2>/dev/null)"
 	[ -f $ROOT/etc/matepad/bt-mac ] && say "bt_mac=$(cat $ROOT/etc/matepad/bt-mac)"

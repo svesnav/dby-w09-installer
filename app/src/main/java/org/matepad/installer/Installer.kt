@@ -24,6 +24,8 @@ data class Probe(val values: Map<String, String>) {
     val staged get() = this["staged"] == "1"
     /** Kubuntu from this app is on the card (its root's label). */
     val linuxInstalled get() = this["linux"] == "1"
+    /** Its swap file, MB (0: none; null: unknown). */
+    val swapMb get() = this["swap_mb"].toIntOrNull()
 }
 
 enum class Step(val label: String) {
@@ -33,6 +35,7 @@ enum class Step(val label: String) {
     FILES("Copy this tablet's own files"),
     SETUP("Set up your account and language"),
     UPDATE("Update Kubuntu"),
+    SWAP("Set up the swap file"),
     BOOT("Prepare the boot images"),
 }
 
@@ -146,6 +149,18 @@ class Installer(private val context: Context, private val report: (Report) -> Un
             }
         }
         prepareBoot(stock, stockRamdisk, btMac)
+    }
+
+    /** The swap file of Kubuntu on the card: [mb] MB, 0 removes it. Takes effect at Linux's next start. */
+    fun swap(mb: Int) {
+        report(Report(Step.CHECK, detail = "Reading this tablet's state"))
+        val probe = probe(context)
+        val sd = probe.sd ?: throw IOException("no microSD card")
+        if (!probe.linuxInstalled) throw IOException("there is no Kubuntu from this app on the card")
+        log(Step.CHECK, "Kubuntu on ${probe["sd_name"]} at $sd, swap now ${swapLabel(probe.swapMb ?: 0)}")
+
+        report(Report(Step.SWAP, detail = if (mb == 0) "Removing the swap file" else "Swap file of ${swapLabel(mb)}"))
+        Root.check("sh $script swap ${sd}p1 $mb") { log(Step.SWAP, it) }
     }
 
     /** HarmonyOS's boot image and ramdisk partition (the Linux ones are built on them). */

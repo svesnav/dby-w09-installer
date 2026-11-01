@@ -37,6 +37,7 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -151,6 +152,7 @@ fun App(model: MainViewModel) {
                         TabletCard(s, model)
                         BootCard(s, model)
                         UpdateCard(s, model)
+                        SwapCard(s, model)
                     }
                     Column(Modifier.weight(0.58f).verticalScroll(rememberScrollState()),
                         verticalArrangement = Arrangement.spacedBy(24.dp)) {
@@ -167,6 +169,7 @@ fun App(model: MainViewModel) {
                         TabletCard(s, model)
                         BootCard(s, model)
                         UpdateCard(s, model)
+                        SwapCard(s, model)
                         SetupCard(s, model)
                         InstallCard(s, model)
                     }
@@ -314,6 +317,25 @@ private fun UpdateCard(s: UiState, model: MainViewModel) {
 }
 
 @Composable
+private fun SwapCard(s: UiState, model: MainViewModel) {
+    val p = s.probe
+    if (p?.linuxInstalled != true) return
+    val current = p.swapMb
+    val sizes = swapSizesFor(p.sdBytes).let { if (current != null && current !in it) it + current else it }
+    var pick by remember(current) { mutableStateOf(current ?: 0) }
+    Section("Swap", Icons.Filled.Build) {
+        Text("A swap file in Kubuntu's root on the card gives Linux room beyond the tablet's memory. " +
+            "Now: ${current?.let(::swapLabel) ?: "unknown"}. A change takes effect at Linux's next start.",
+            style = MaterialTheme.typography.bodyMedium)
+        Choice("Swap file", swapLabel(pick), sizes.map(::swapLabel)) { i -> pick = sizes[i] }
+        Button(
+            onClick = { model.setSwap(pick) }, enabled = s.canUpdate && pick != current,
+            modifier = Modifier.fillMaxWidth().height(56.dp), shape = RoundedCornerShape(16.dp),
+        ) { Text(if (pick == 0) "Remove swap" else "Set swap to ${swapLabel(pick)}", fontSize = 18.sp) }
+    }
+}
+
+@Composable
 private fun InstallCard(s: UiState, model: MainViewModel) {
     val pick = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) model.pickFile(uri)
@@ -430,11 +452,10 @@ private fun ProgressCard(st: InstallState, model: MainViewModel) {
         view.keepScreenOn = !st.done && st.error == null
         onDispose { view.keepScreenOn = false }
     }
-    val update = st.job == Job.UPDATE
-    Section(when {
-        st.error != null -> if (update) "Update failed" else "Installation failed"
-        st.done -> if (update) "Kubuntu is up to date" else "Linux is installed"
-        else -> if (update) "Updating…" else "Installing…"
+    Section(when (st.job) {
+        Job.INSTALL -> if (st.error != null) "Installation failed" else if (st.done) "Linux is installed" else "Installing…"
+        Job.UPDATE -> if (st.error != null) "Update failed" else if (st.done) "Kubuntu is up to date" else "Updating…"
+        Job.SWAP -> if (st.error != null) "Swap not changed" else if (st.done) "Swap is set" else "Setting up swap…"
     }, modifier = Modifier.fillMaxSize()) {
         st.job.steps.forEach { step ->
             val state = when {
@@ -472,9 +493,11 @@ private fun ProgressCard(st: InstallState, model: MainViewModel) {
         }
         st.error?.let {
             Text(it, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Medium)
-            Text(if (update) "HarmonyOS's boot partitions were not changed. Fix the cause and update again."
-                else "HarmonyOS's boot partitions were not changed. Fix the cause and install again.",
-                style = MaterialTheme.typography.bodyMedium)
+            Text(when (st.job) {
+                Job.INSTALL -> "HarmonyOS's boot partitions were not changed. Fix the cause and install again."
+                Job.UPDATE -> "HarmonyOS's boot partitions were not changed. Fix the cause and update again."
+                Job.SWAP -> "Fix the cause and set the swap again."
+            }, style = MaterialTheme.typography.bodyMedium)
         }
         val listState = rememberLazyListState()
         LaunchedEffect(st.log.size) { if (st.log.isNotEmpty()) listState.scrollToItem(st.log.size - 1) }
@@ -488,7 +511,7 @@ private fun ProgressCard(st: InstallState, model: MainViewModel) {
         }
         if (st.done || st.error != null) {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                if (st.done) Button(onClick = model::bootLinux, shape = RoundedCornerShape(16.dp),
+                if (st.done && st.job != Job.SWAP) Button(onClick = model::bootLinux, shape = RoundedCornerShape(16.dp),
                     modifier = Modifier.height(52.dp)) { Text("Boot Linux now", fontSize = 16.sp) }
                 OutlinedButton(onClick = model::closeInstall, modifier = Modifier.height(52.dp)) { Text("Close") }
             }

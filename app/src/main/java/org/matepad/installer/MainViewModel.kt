@@ -21,6 +21,7 @@ data class LocalImage(val uri: Uri, val name: String, val size: Long)
 enum class Job(val steps: List<Step>) {
     INSTALL(listOf(Step.CHECK, Step.CARD, Step.WRITE, Step.FILES, Step.SETUP, Step.BOOT)),
     UPDATE(listOf(Step.CHECK, Step.UPDATE, Step.BOOT)),
+    SWAP(listOf(Step.CHECK, Step.SWAP)),
 }
 
 data class InstallState(
@@ -178,7 +179,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
         val wlan = Mac.normalize(s.wlanMac).orEmpty()
         val bt = Mac.normalize(s.btMac).orEmpty()
-        InstallSession.start(app, Job.INSTALL) { it.install(source, wlan, bt, s.setup) }
+        val setup = s.setup.copy(swapMb = s.setup.swapFor(s.probe!!.sdBytes))
+        InstallSession.start(app, Job.INSTALL) { it.install(source, wlan, bt, setup) }
     }
 
     /** Updates Kubuntu on the card (apt) and prepares its boot images again. */
@@ -186,6 +188,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val s = _state.value
         if (!s.canUpdate) return
         InstallSession.start(getApplication<Application>(), Job.UPDATE) { it.update() }
+    }
+
+    /** Sets the swap file of Kubuntu on the card to [mb] MB (0: none). */
+    fun setSwap(mb: Int) {
+        val s = _state.value
+        if (!s.canUpdate) return
+        InstallSession.start(getApplication<Application>(), Job.SWAP) { it.swap(mb) }
     }
 
     fun closeInstall() = InstallSession.clear()

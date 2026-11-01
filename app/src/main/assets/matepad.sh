@@ -8,6 +8,7 @@
 #   sh matepad.sh configure PART            account, language, time zone (stdin)
 #   sh matepad.sh stage-check               verify /cache/linux70 (SHA256SUMS)
 #   sh matepad.sh update PART ASSETS        update Kubuntu on the card (apt), stage its boot bundle
+#   sh matepad.sh swap PART MB              swap file of Kubuntu on the card: MB megabytes, 0 none
 # Partitions of the internal storage are only read here; the app writes the
 # boot partitions through /cache/linux70/boot-linux.sh.
 set -e
@@ -60,6 +61,49 @@ bt_mac() {
 	done
 }
 
+swap_size() {	# swap_size PART: swap_mb= of the swap file in Kubuntu's root (read-only look)
+	m=/mnt/matepad-linux-probe
+	mkdir -p $m
+	if ! mount -t ext4 -o ro,noload "$1" $m 2>/dev/null; then
+		rmdir $m
+		return 0
+	fi
+	if grep -qs '^/swapfile[[:space:]]' $m/etc/fstab && [ -f $m/swapfile ]; then
+		say "swap_mb=$(( $(stat -c %s $m/swapfile) / 1048576 ))"
+	else
+		say "swap_mb=0"
+	fi
+	umount $m
+	rmdir $m
+}
+
+# swapfile PART MB: /swapfile of the root mounted at $ROOT (with /dev and /proc
+# for its chroot) at MB megabytes and its fstab line; 0 removes both. Ubuntu's
+# own tools do it. The image's file system fills the card only from Linux's
+# first boot on: if the swap file does not fit yet, it is grown here.
+swapfile() {
+	p1=$1 mb=$2
+	R() { chroot $ROOT /usr/bin/env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin LANG=C.UTF-8 "$@"; }
+	free_mb() { df -k $ROOT | awk 'NR==2 {print int($4 / 1024)}'; }
+	R sed -i '\|^/swapfile[[:space:]]|d' /etc/fstab
+	rm -f $ROOT/swapfile
+	if [ "$mb" = 0 ]; then
+		say "no swap"
+		return 0
+	fi
+	need=$((mb + 1024))	# and 1 GB left over
+	if [ "$(free_mb)" -lt $need ]; then
+		say "growing the file system to the whole card"
+		R resize2fs "$p1" >/dev/null 2>&1 || die "cannot grow the file system on $p1"
+	fi
+	[ "$(free_mb)" -ge $need ] || die "$(free_mb) MB free on the card: not enough for $mb MB of swap"
+	R fallocate -l ${mb}M /swapfile || die "cannot create the swap file"
+	chmod 600 $ROOT/swapfile
+	R mkswap -L swap /swapfile >/dev/null || die "cannot format the swap file"
+	echo '/swapfile none swap sw 0 0' >> $ROOT/etc/fstab
+	say "swap $mb MB in /swapfile"
+}
+
 probe() {
 	say "uid=$(id -u)"
 	say "model=$(getprop ro.product.model)"
@@ -80,7 +124,10 @@ probe() {
 		if [ -e "/dev/block/${n}p1" ]; then
 			label=$(blkid "/dev/block/${n}p1" 2>/dev/null | sed -n 's/.* LABEL="\([^"]*\)".*/\1/p')
 			say "sd_p1_label=$label"
-			[ "$label" = LINUX70ROOT ] && say "linux=1"
+			if [ "$label" = LINUX70ROOT ]; then
+				say "linux=1"
+				swap_size "/dev/block/${n}p1"
+			fi
 		fi
 		break
 	done
@@ -205,7 +252,7 @@ populate() {
 
 configure() {	# configure PART, settings from stdin: KEY=value lines, PASSWORD last
 	p1=$1
-	FULLNAME= USERNAME= HOSTNAME= LOCALE= KEYBOARD= TIMEZONE= AUTOLOGIN= PASSWORD=
+	FULLNAME= USERNAME= HOSTNAME= LOCALE= KEYBOARD= TIMEZONE= AUTOLOGIN= SWAP=0 PASSWORD=
 	while IFS= read -r line; do
 		case "$line" in
 		FULLNAME=*) FULLNAME=${line#FULLNAME=} ;;
@@ -215,6 +262,7 @@ configure() {	# configure PART, settings from stdin: KEY=value lines, PASSWORD l
 		KEYBOARD=*) KEYBOARD=${line#KEYBOARD=} ;;
 		TIMEZONE=*) TIMEZONE=${line#TIMEZONE=} ;;
 		AUTOLOGIN=*) AUTOLOGIN=${line#AUTOLOGIN=} ;;
+		SWAP=*) SWAP=${line#SWAP=} ;;
 		PASSWORD=*) PASSWORD=${line#PASSWORD=} ;;
 		esac
 	done
@@ -284,6 +332,9 @@ configure() {	# configure PART, settings from stdin: KEY=value lines, PASSWORD l
 			> $ROOT/usr/share/glib-2.0/schemas/90-matepad-maliit.gschema.override
 		C glib-compile-schemas /usr/share/glib-2.0/schemas || die "cannot compile the GSettings schemas"
 	fi
+
+	case "$SWAP" in ''|*[!0-9]*) die "swap size $SWAP is not a number of MB" ;; esac
+	swapfile "$p1" "$SWAP"
 
 	if [ "$AUTOLOGIN" = 1 ]; then
 		say "automatic login for $USERNAME"
@@ -394,9 +445,27 @@ update() {	# update PART ASSETS: Kubuntu on the card in place, then its boot bun
 	say "step=done"
 }
 
+swap() {	# swap PART MB: the swap file of Kubuntu on the card, set to MB megabytes (0: none)
+	p1=$1 mb=$2
+	case "$mb" in ''|*[!0-9]*) die "swap size $mb is not a number of MB" ;; esac
+	mkdir -p $ROOT
+	mount -t ext4 -o rw "$p1" $ROOT || die "cannot mount $p1"
+	if [ ! -f $ROOT/etc/os-release ] || [ ! -d $ROOT/usr/lib/matepad ]; then
+		umount $ROOT
+		die "no Kubuntu from this app on $p1"
+	fi
+	mount -o bind /dev $ROOT/dev && mount -t proc proc $ROOT/proc || die "cannot prepare the chroot"
+	trap 'cd /; for d in proc dev; do umount $ROOT/$d 2>/dev/null || umount -l $ROOT/$d; done;
+		umount $ROOT 2>/dev/null || umount -l $ROOT; rmdir $ROOT 2>/dev/null' EXIT
+	swapfile "$p1" "$mb"
+	sync
+	say "done"
+}
+
 case "$1" in
 probe) probe ;;
 update) update "$2" "$3" ;;
+swap) swap "$2" "$3" ;;
 configure) configure "$2" ;;
 release-card) release_card "$2" ;;
 wipe-card) wipe_card "$2" ;;

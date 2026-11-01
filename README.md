@@ -29,8 +29,10 @@ three boot partitions are rewritten when Linux is started, and Kubuntu's
    addresses that Linux will use. Enter the Bluetooth address by hand if
    HarmonyOS does not report it (Settings › About tablet › Status).
 3. *Your Kubuntu*: your name, user name, password, computer name, language,
-   keyboard layout, time zone, and whether to log in automatically (on by
-   default: the login screen has no on-screen keyboard yet).
+   keyboard layout, time zone, whether to log in automatically (on by
+   default: the login screen has no on-screen keyboard yet), and the size of
+   the swap file (none, 2, 4 or 8 GB, at most an eighth of the card;
+   4 GB by default).
 4. *Install Linux*: pick a GitHub release or a local `.img.xz` / `.img.gz`,
    then **Erase card and install**.
 5. **Boot Linux** restarts into Kubuntu, straight to its login screen.
@@ -47,7 +49,7 @@ three boot partitions are rewritten when Linux is started, and Kubuntu's
 | Erase and partition the card | clears both partition-table areas, writes an MBR with one Linux partition from 4 MiB to the end |
 | Write Kubuntu | streams the release (resuming dropped connections) through the xz/gzip decoder straight to the partition; checks the SHA-256 of the download |
 | Copy this tablet's own files | mounts the new root and copies the vendor files and firmware the image lists (`/usr/share/matepad/device-files`), the Wi-Fi/Bluetooth addresses, the paired M-Pencil's address (Linux pairs the pen by it), and the stock `boot`/`ramdisk`/`dtbo` images for Restart to HarmonyOS |
-| Set up your account and language | in the new root (chroot): creates the user with the password (passed over stdin only), computer name, time zone, locale and keyboard layouts (the on-screen keyboard gets the same languages), optional automatic login (SDDM), then switches Kubuntu's own first-boot setup off |
+| Set up your account and language | in the new root (chroot): creates the user with the password (passed over stdin only), computer name, time zone, locale and keyboard layouts (the on-screen keyboard gets the same languages), optional automatic login (SDDM), the swap file (`/swapfile`, in `/etc/fstab`; the file system is grown to the card first if it does not fit yet), then switches Kubuntu's own first-boot setup off |
 | Prepare the boot images | from the image's boot bundle and the stock partitions: `boot` (stock header and ramdisk, Linux kernel, DTB with this tablet's Bluetooth address, command line), `ramdisk` (Linux initramfs over the stock partition, AVB footer kept), `dtbo`; staged in `/cache/linux70` with `SHA256SUMS` |
 
 **Boot Linux** runs `/cache/linux70/boot-linux.sh`: it checks the staged
@@ -63,6 +65,13 @@ repository ([kubuntu-dby-w09](https://github.com/svesnav/kubuntu-dby-w09)
 `packaging/`), then rebuilds the boot images from the updated kernel; **Boot
 Linux** starts it. A card from before the MatePad packages first gets the
 repository and moves its hand-installed support over to the packages.
+
+## Swap
+
+**Swap** (shown when the card already has Kubuntu from this app) shows the
+swap file's size and sets it to another size or removes it: `/swapfile` in
+Kubuntu's root, made with Ubuntu's own `fallocate` and `mkswap` in a chroot,
+and its `/etc/fstab` line. Linux uses it from its next start.
 
 The Linux filesystem grows to the whole card on its first boot. No Huawei
 file is downloaded: everything Huawei comes from the tablet it is installed on.
@@ -83,6 +92,6 @@ gradle testDebugUnitTest assembleRelease
 | --- | --- |
 | `app/src/main/java/org/matepad/installer/core/` | boot image (mkbootimg v0–v2), DTB, MBR and ramdisk helpers; plain Java with unit tests |
 | `app/src/main/java/org/matepad/installer/` | Compose UI, view model, installation steps, GitHub download, `su` helper |
-| `app/src/main/assets/matepad.sh` | the root-side steps (probe, card, populate, update) |
+| `app/src/main/assets/matepad.sh` | the root-side steps (probe, card, populate, configure, update, swap) |
 | `app/src/main/assets/boot-linux.sh` | the same script as kubuntu-dby-w09 `boot-switch/boot-linux.sh` |
 | `signing/` | the shared signing key |

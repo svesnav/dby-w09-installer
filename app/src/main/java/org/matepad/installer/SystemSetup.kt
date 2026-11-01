@@ -41,6 +41,14 @@ val KEYBOARD_LAYOUTS = listOf(
     KeyboardLayout("Japanese", "jp"),
 )
 
+/** Swap file sizes on offer, in MB (0: none). */
+val SWAP_SIZES = listOf(0, 2048, 4096, 8192)
+
+fun swapLabel(mb: Int) = if (mb == 0) "None" else "${mb / 1024} GB"
+
+/** The sizes that suit a card: at most an eighth of it. */
+fun swapSizesFor(cardBytes: Long) = SWAP_SIZES.filter { it == 0 || it.toLong() shl 20 <= cardBytes / 8 }
+
 /** Area/City zones, as /usr/share/zoneinfo has them. */
 val TIME_ZONES: List<String> by lazy {
     TimeZone.getAvailableIDs().filter {
@@ -67,6 +75,8 @@ data class SystemSetup(
     val timezone: String = TimeZone.getDefault().id.takeIf { it in TIME_ZONES } ?: "Europe/London",
     /** SDDM logs the user in: the login screen has no on-screen keyboard yet. */
     val autologin: Boolean = true,
+    /** Swap file in Kubuntu's root, MB (0: none). */
+    val swapMb: Int = 4096,
 ) {
     val userNameError: String?
         get() = when {
@@ -81,6 +91,9 @@ data class SystemSetup(
     val hostnameError: String?
         get() = if (hostname.isNotEmpty() && !Regex("[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?").matches(hostname))
             "letters, digits and -" else null
+    /** The chosen swap size, or the largest that suits the card. */
+    fun swapFor(cardBytes: Long): Int = swapSizesFor(cardBytes).let { s -> swapMb.takeIf { it in s } ?: s.last() }
+
     val valid: Boolean
         get() = fullName.isNotBlank() && userName.isNotEmpty() && userNameError == null &&
             password.isNotEmpty() && password == password2 && hostname.isNotEmpty() && hostnameError == null &&
@@ -96,6 +109,7 @@ data class SystemSetup(
         line("KEYBOARD", keyboard.xkb)
         line("TIMEZONE", timezone)
         line("AUTOLOGIN", if (autologin) "1" else "0")
+        line("SWAP", swapMb.toString())
         line("PASSWORD", password)
     }
 

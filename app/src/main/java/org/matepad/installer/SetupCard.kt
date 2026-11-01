@@ -60,6 +60,10 @@ fun SetupCard(s: UiState, model: MainViewModel) {
             model.updateSetup { it.copy(keyboard = KEYBOARD_LAYOUTS[i]) }
         }
         TimeZoneChoice(st.timezone) { tz -> model.updateSetup { it.copy(timezone = tz) } }
+        val swaps = swapSizesFor(s.probe?.sdBytes ?: 0)
+        Choice("Swap file", swapLabel(st.swapFor(s.probe?.sdBytes ?: 0)), swaps.map(::swapLabel)) { i ->
+            model.updateSetup { it.copy(swapMb = swaps[i]) }
+        }
         Row(Modifier.clickable { model.updateSetup { it.copy(autologin = !it.autologin) } },
             verticalAlignment = Alignment.CenterVertically) {
             Checkbox(checked = st.autologin, onCheckedChange = { v -> model.updateSetup { it.copy(autologin = v) } })
@@ -94,7 +98,7 @@ private fun Field(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun Choice(label: String, value: String, options: List<String>, onPick: (Int) -> Unit) {
+internal fun Choice(label: String, value: String, options: List<String>, onPick: (Int) -> Unit) {
     var open by remember { mutableStateOf(false) }
     ExposedDropdownMenuBox(expanded = open, onExpandedChange = { open = it }) {
         OutlinedTextField(

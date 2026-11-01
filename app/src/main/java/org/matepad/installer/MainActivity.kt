@@ -319,26 +319,48 @@ private fun UpdateCard(s: UiState, model: MainViewModel) {
     )
 }
 
-/** A newer release of this app on GitHub: install it over this one. */
+/** This app against its newest GitHub release: install that over this one. */
 @Composable
 private fun AppUpdateCard(s: UiState, model: MainViewModel) {
     val u = s.appUpdate
-    val latest = u.latest ?: return
-    if (u.newer != true && u.installing == null) return
-    Section("App update", Icons.Filled.Refresh) {
-        Text("MatePad Linux ${latest.version} (${latest.published}) is out; this is ${u.installed}. " +
-            "Updating downloads it from GitHub and installs it over this app, which then closes: open it again.",
-            style = MaterialTheme.typography.bodyMedium)
-        val f = u.installing
+    val latest = u.latest
+    val f = u.installing
+    Section("Update this app", Icons.Filled.Refresh) {
+        Fact("Installed", u.installed)
+        Fact("Newest release", when {
+            u.checking -> "checking…"
+            latest != null -> "${latest.version} (${latest.published})"
+            u.error == null -> "none yet"
+            else -> ""
+        }, if (u.checking || latest == null) null else u.newer?.not())
+        val offer = latest != null && !u.checking && u.newer != false
+        Text(
+            when {
+                u.checking -> "Checking GitHub for a newer version of this app…"
+                latest == null -> "Not checked."
+                u.newer == true -> "A newer version is out. Updating downloads it from GitHub and installs " +
+                    "it over this app, which then closes: open it again. Your settings stay."
+                u.newer == null -> "This is a development build. Installing the release replaces it " +
+                    "(the app then closes: open it again)."
+                else -> "This app is up to date."
+            },
+            style = MaterialTheme.typography.bodyMedium,
+        )
         if (f != null) {
             LinearProgressIndicator(progress = { f }, modifier = Modifier.fillMaxWidth().height(8.dp))
             Text(if (f < 1f) "Downloading %.0f %%".format(f * 100) else "Installing…",
                 style = MaterialTheme.typography.bodySmall)
         }
-        Button(
+        if (offer) Button(
             onClick = model::updateApp, enabled = f == null && s.install == null,
             modifier = Modifier.fillMaxWidth().height(56.dp), shape = RoundedCornerShape(16.dp),
-        ) { Text("Update app to ${latest.version}", fontSize = 18.sp) }
+        ) {
+            Text(if (u.newer == true) "Update app to ${latest!!.version}" else "Install release ${latest!!.version}",
+                fontSize = 18.sp)
+        } else OutlinedButton(
+            onClick = model::checkAppUpdate, enabled = !u.checking && f == null,
+            modifier = Modifier.fillMaxWidth(),
+        ) { Text("Check for updates") }
         u.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
     }
 }

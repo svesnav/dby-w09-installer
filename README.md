@@ -68,11 +68,13 @@ repository and moves its hand-installed support over to the packages.
 
 ## Updating the app
 
-At start (and on refresh) the app looks up its newest release here on GitHub.
-When it is newer than the installed version, **App update** offers it: the APK
+The **Update this app** card shows the installed version and the newest
+release here on GitHub, looked up at start, on refresh and with **Check for
+updates**. When the release is newer, **Update app** installs it: the APK
 streams from GitHub straight into `pm install` as root (nothing is stored on
 the tablet) and installs over the app, which then closes; open it again.
-Development builds (`0.1-dev.N`) are not offered releases.
+A development build (`0.1-dev.N`) can be replaced with the release the same
+way (**Install release**).
 
 ## Swap
 

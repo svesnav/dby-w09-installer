@@ -366,7 +366,11 @@ update() {	# update PART ASSETS: Kubuntu on the card in place, then its boot bun
 		mount -t sysfs sysfs $ROOT/sys || die "cannot prepare the chroot"
 	# apt needs a resolver: the root's resolv.conf points at systemd-resolved,
 	# which does not run here. Put the network's DNS servers in its place.
-	mv $ROOT/etc/resolv.conf $ROOT/etc/resolv.conf.matepad-update 2>/dev/null || true
+	# The saved link dangles outside Kubuntu (test -L, not -e); one left by an
+	# earlier update is the original, so it is kept and restored this time.
+	RC=$ROOT/etc/resolv.conf.matepad-update
+	[ -L $RC ] || [ -e $RC ] || mv $ROOT/etc/resolv.conf $RC 2>/dev/null || true
+	rm -f $ROOT/etc/resolv.conf
 	dns=$(for p in net.dns1 net.dns2; do getprop $p; done)
 	{ for d in $dns 8.8.8.8 1.1.1.1; do echo "nameserver $d"; done; } > $ROOT/etc/resolv.conf
 	# services do not start in the chroot
@@ -377,7 +381,7 @@ update() {	# update PART ASSETS: Kubuntu on the card in place, then its boot bun
 		chmod 755 $ROOT/usr/sbin/policy-rc.d
 	fi
 	trap 'cd /; [ "$policy" = keep ] || rm -f $ROOT/usr/sbin/policy-rc.d;
-		[ -e $ROOT/etc/resolv.conf.matepad-update ] && mv -f $ROOT/etc/resolv.conf.matepad-update $ROOT/etc/resolv.conf;
+		{ [ -L $RC ] || [ -e $RC ]; } && mv -f $RC $ROOT/etc/resolv.conf;
 		for d in sys proc dev/pts dev; do umount $ROOT/$d 2>/dev/null || umount -l $ROOT/$d; done;
 		umount $ROOT 2>/dev/null || umount -l $ROOT; rmdir $ROOT 2>/dev/null' EXIT
 	C() { chroot $ROOT /usr/bin/env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin HOME=/root LANG=C.UTF-8 \
